@@ -17,6 +17,8 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Forms = System.Windows.Forms;
+using MediaColor = System.Windows.Media.Color;
 
 namespace VexPN.Desktop;
 
@@ -29,9 +31,10 @@ public partial class MainWindow : Window
     private readonly HttpClient _http = new();
     private readonly XrayVpnService _vpn;
     private bool _vpnBusy;
+    private Forms.NotifyIcon? _trayIcon;
     private BitmapImage? _connectedImage;
     private BitmapImage? _disconnectedImage;
-    private readonly SolidColorBrush _statusBrush = new(Color.FromRgb(160, 160, 160));
+    private readonly SolidColorBrush _statusBrush = new(MediaColor.FromRgb(160, 160, 160));
     private bool _lastConnectionState;
     private Guid? _activeKeyId;
     private readonly HashSet<Guid> _markedForDelete = [];
@@ -80,6 +83,7 @@ public partial class MainWindow : Window
             UpdateConnectionVisual();
             UpdateDeleteButtonState();
             UpdateKeysFadeOverlays();
+            EnsureTrayIcon();
         };
         SizeChanged += (_, _) => ApplyRoundedClip();
 
@@ -138,7 +142,7 @@ public partial class MainWindow : Window
         var src = e.OriginalSource as DependencyObject;
         while (src is not null)
         {
-            if (src is Button)
+            if (src is System.Windows.Controls.Button)
                 return;
             src = VisualTreeHelper.GetParent(src);
         }
@@ -158,6 +162,9 @@ public partial class MainWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) =>
         ShowCloseConfirmPanel();
+
+    private void MinimizeToTrayButton_Click(object sender, RoutedEventArgs e) =>
+        MinimizeToTray();
 
     private void LoadConnectionImages()
     {
@@ -358,8 +365,8 @@ public partial class MainWindow : Window
     private void AnimateConnectionStatus(bool connected)
     {
         var newText = connected ? "ПОДКЛЮЧЕНО" : "НЕ ПОДКЛЮЧЕНО";
-        var accent = (Application.Current.Resources["AccentPurpleBrush"] as SolidColorBrush)?.Color ?? Color.FromRgb(93, 63, 211);
-        var neutral = (Application.Current.Resources["SecondaryTextBrush"] as SolidColorBrush)?.Color ?? Color.FromRgb(160, 160, 160);
+        var accent = (System.Windows.Application.Current.Resources["AccentPurpleBrush"] as SolidColorBrush)?.Color ?? MediaColor.FromRgb(93, 63, 211);
+        var neutral = (System.Windows.Application.Current.Resources["SecondaryTextBrush"] as SolidColorBrush)?.Color ?? MediaColor.FromRgb(160, 160, 160);
         var targetColor = connected ? accent : neutral;
 
         if (_lastConnectionState == connected && ConnectionStatusText.Text == newText)
@@ -395,7 +402,7 @@ public partial class MainWindow : Window
         _editMode = !_editMode;
         EditButton.Content = _editMode ? "Отмена" : "Изменить";
         DeleteSelectedButton.Visibility = _editMode ? Visibility.Visible : Visibility.Collapsed;
-        KeysList.SelectionMode = SelectionMode.Single;
+        KeysList.SelectionMode = System.Windows.Controls.SelectionMode.Single;
         KeysList.SelectedItem = null;
 
         if (!_editMode)
@@ -517,8 +524,8 @@ public partial class MainWindow : Window
         var hasSelection = _markedForDelete.Count > 0 && !_vpn.IsRunning;
         DeleteSelectedButton.IsEnabled = hasSelection;
         DeleteSelectedButton.Foreground = hasSelection
-            ? new SolidColorBrush(Color.FromRgb(248, 113, 113))
-            : new SolidColorBrush(Color.FromRgb(107, 114, 128));
+            ? new SolidColorBrush(MediaColor.FromRgb(248, 113, 113))
+            : new SolidColorBrush(MediaColor.FromRgb(107, 114, 128));
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -541,6 +548,82 @@ public partial class MainWindow : Window
         }
 
         base.OnClosing(e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        try
+        {
+            if (_trayIcon is not null)
+            {
+                _trayIcon.Visible = false;
+                _trayIcon.Dispose();
+                _trayIcon = null;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        base.OnClosed(e);
+    }
+
+    private void EnsureTrayIcon()
+    {
+        if (_trayIcon is not null)
+            return;
+
+        _trayIcon = new Forms.NotifyIcon
+        {
+            Text = "VexPN",
+            Visible = true,
+            Icon = System.Drawing.SystemIcons.Application
+        };
+
+        var menu = new Forms.ContextMenuStrip();
+        var showItem = new Forms.ToolStripMenuItem("Показать", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
+        var exitItem = new Forms.ToolStripMenuItem("Выход", null, (_, _) =>
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _allowClose = true;
+                Close();
+            });
+        });
+        menu.Items.Add(showItem);
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add(exitItem);
+        _trayIcon.ContextMenuStrip = menu;
+
+        _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
+    }
+
+    private void MinimizeToTray()
+    {
+        EnsureTrayIcon();
+        Hide();
+        ShowInTaskbar = false;
+        try
+        {
+            _trayIcon?.ShowBalloonTip(1200, "VexPN", "Приложение свернуто в трей.", Forms.ToolTipIcon.Info);
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    internal void ShowFromTray()
+    {
+        ShowInTaskbar = true;
+        Show();
+        if (WindowState == WindowState.Minimized)
+            WindowState = WindowState.Normal;
+        Activate();
+        Topmost = true;
+        Topmost = false;
+        Focus();
     }
 
     private void AddKeyButton_OnClick(object sender, RoutedEventArgs e)
@@ -755,8 +838,8 @@ public partial class MainWindow : Window
     {
         NotificationText.Text = message;
         NotificationBanner.Background = new SolidColorBrush(success
-            ? Color.FromArgb(230, 34, 68, 50)
-            : Color.FromArgb(230, 90, 35, 35));
+            ? MediaColor.FromArgb(230, 34, 68, 50)
+            : MediaColor.FromArgb(230, 90, 35, 35));
         NotificationBanner.Visibility = Visibility.Visible;
         _notificationTimer.Stop();
         _notificationTimer.Start();

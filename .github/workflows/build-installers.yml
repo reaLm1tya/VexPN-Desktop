@@ -102,6 +102,11 @@ jobs:
             /p:AppendRuntimeIdentifierToPublishPath=false `
             /p:SelfContained=true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:IncludeAllContentForSelfExtract=true
 
+          Write-Host "=== publish-x64 ==="
+          Get-ChildItem "desktop/VexPN.Desktop/publish-x64" -Force | Format-Table Name,Length
+          Write-Host "=== publish-x86 ==="
+          Get-ChildItem "desktop/VexPN.Desktop/publish-x86" -Force | Format-Table Name,Length
+
       - name: Publish uninstall.exe (x64 + x86)
         shell: pwsh
         run: |
