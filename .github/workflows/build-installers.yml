@@ -1,0 +1,123 @@
+name: Build Windows installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Prepare folders
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "desktop/VexPN.Desktop/Assets/wintun/amd64","desktop/VexPN.Desktop/Assets/wintun/x86","desktop/VexPN.Desktop/Assets/xray/x64","desktop/VexPN.Desktop/Assets/xray/x86" | Out-Null
+
+      - name: Download Xray (x64 + x86)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Download-And-ExtractXray($url, $dstExe) {
+            $zip = Join-Path $env:TEMP ("xray-" + [Guid]::NewGuid().ToString("n") + ".zip")
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -TimeoutSec 180
+            $extract = Join-Path $env:TEMP ("xray-extract-" + [Guid]::NewGuid().ToString("n"))
+            Expand-Archive -Path $zip -DestinationPath $extract -Force
+            Copy-Item -Force (Join-Path $extract "xray.exe") $dstExe
+          }
+
+          Download-And-ExtractXray "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip" "desktop/VexPN.Desktop/Assets/xray/x64/xray.exe"
+          Download-And-ExtractXray "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-32.zip" "desktop/VexPN.Desktop/Assets/xray/x86/xray.exe"
+
+      - name: Download Wintun (amd64 + x86)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = Join-Path $env:TEMP ("wintun-" + [Guid]::NewGuid().ToString("n") + ".zip")
+          $urls = @(
+            "https://www.wintun.net/builds/wintun-0.14.1.zip",
+            "https://git.zx2c4.com/wintun/snapshot/wintun-0.14.1.zip"
+          )
+          $ok = $false
+          foreach ($u in $urls) {
+            try {
+              Invoke-WebRequest -Uri $u -OutFile $zip -UseBasicParsing -TimeoutSec 180
+              $ok = $true
+              break
+            } catch {
+              Write-Host "Failed: $u"
+            }
+          }
+          if (-not $ok) { throw "Failed to download Wintun" }
+
+          $extract = Join-Path $env:TEMP ("wintun-extract-" + [Guid]::NewGuid().ToString("n"))
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          Copy-Item -Force (Join-Path $extract "amd64/wintun.dll") "desktop/VexPN.Desktop/Assets/wintun/amd64/wintun.dll"
+          Copy-Item -Force (Join-Path $extract "x86/wintun.dll") "desktop/VexPN.Desktop/Assets/wintun/x86/wintun.dll"
+
+      - name: Publish VexPN (x64 + x86)
+        shell: pwsh
+        run: |
+          dotnet publish "desktop/VexPN.Desktop/VexPN.Desktop.csproj" -c Release -r win-x64 `
+            /p:PublishDir="desktop/VexPN.Desktop/publish-x64/" `
+            /p:AppendRuntimeIdentifierToPublishPath=false `
+            /p:SelfContained=true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:IncludeAllContentForSelfExtract=true
+
+          dotnet publish "desktop/VexPN.Desktop/VexPN.Desktop.csproj" -c Release -r win-x86 `
+            /p:PublishDir="desktop/VexPN.Desktop/publish-x86/" `
+            /p:AppendRuntimeIdentifierToPublishPath=false `
+            /p:SelfContained=true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:IncludeAllContentForSelfExtract=true
+
+      - name: Publish uninstall.exe (x64 + x86)
+        shell: pwsh
+        run: |
+          dotnet publish "desktop/VexPN.UninstallStub/VexPN.UninstallStub.csproj" -c Release -r win-x64 `
+            /p:PublishSingleFile=true /p:SelfContained=true `
+            /p:PublishDir="desktop/VexPN.Desktop/installer/uninstall/x64/"
+
+          dotnet publish "desktop/VexPN.UninstallStub/VexPN.UninstallStub.csproj" -c Release -r win-x86 `
+            /p:PublishSingleFile=true /p:SelfContained=true `
+            /p:PublishDir="desktop/VexPN.Desktop/installer/uninstall/x86/"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+
+      - name: Build installers (.iss)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          Push-Location "desktop/VexPN.Desktop/installer"
+          & $iscc ".\VexPN-x64.iss"
+          & $iscc ".\VexPN-x86.iss"
+          Pop-Location
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers
+          path: |
+            desktop/VexPN.Desktop/installer/dist/*.exe
+
+      - name: Create GitHub Release (tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/VexPN.Desktop/installer/dist/*.exe
+

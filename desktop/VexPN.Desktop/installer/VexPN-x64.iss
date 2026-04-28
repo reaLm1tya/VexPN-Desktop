@@ -7,6 +7,7 @@ DefaultDirName={autopf}\VexPN
 DefaultGroupName=VexPN
 UninstallDisplayName=VexPN
 UninstallDisplayIcon={app}\VexPN.exe
+OutputDir=dist
 OutputBaseFilename=VexPN-Setup-x64
 Compression=lzma2
 SolidCompression=yes
