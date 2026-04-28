@@ -65,10 +65,27 @@ jobs:
 
           $extract = Join-Path $env:TEMP ("wintun-extract-" + [Guid]::NewGuid().ToString("n"))
           Expand-Archive -Path $zip -DestinationPath $extract -Force
-          $amd64 = Get-ChildItem -Path $extract -Recurse -Filter "wintun.dll" | Where-Object { $_.FullName -match "(?i)\\bam(d)?64\\b" } | Select-Object -First 1
-          $x86   = Get-ChildItem -Path $extract -Recurse -Filter "wintun.dll" | Where-Object { $_.FullName -match "(?i)\\bx86\\b" } | Select-Object -First 1
-          if (-not $amd64) { throw "amd64 wintun.dll not found in archive" }
-          if (-not $x86) { throw "x86 wintun.dll not found in archive" }
+          function Get-PeMachineHex([string]$path) {
+            $b = [System.IO.File]::ReadAllBytes($path)
+            $peOff = [System.BitConverter]::ToInt32($b, 0x3C)
+            $machine = [System.BitConverter]::ToUInt16($b, $peOff + 4)
+            return ('0x{0:X4}' -f $machine)
+          }
+
+          $dlls = Get-ChildItem -Path $extract -Recurse -Filter "wintun.dll"
+          if (-not $dlls -or $dlls.Count -eq 0) { throw "wintun.dll not found in archive" }
+
+          $amd64 = $null
+          $x86 = $null
+          foreach ($d in $dlls) {
+            $m = Get-PeMachineHex $d.FullName
+            if (-not $amd64 -and $m -eq "0x8664") { $amd64 = $d }
+            if (-not $x86 -and $m -eq "0x014C") { $x86 = $d }
+          }
+
+          if (-not $amd64) { throw "amd64 wintun.dll not found in archive (PE machine 0x8664)" }
+          if (-not $x86) { throw "x86 wintun.dll not found in archive (PE machine 0x014C)" }
+
           Copy-Item -Force $amd64.FullName "desktop/VexPN.Desktop/Assets/wintun/amd64/wintun.dll"
           Copy-Item -Force $x86.FullName "desktop/VexPN.Desktop/Assets/wintun/x86/wintun.dll"
 
