@@ -93,12 +93,12 @@ jobs:
         shell: pwsh
         run: |
           dotnet publish "desktop/VexPN.Desktop/VexPN.Desktop.csproj" -c Release -r win-x64 `
-            /p:PublishDir="desktop/VexPN.Desktop/publish-x64/" `
+            /p:PublishDir="publish-x64/" `
             /p:AppendRuntimeIdentifierToPublishPath=false `
             /p:SelfContained=true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:IncludeAllContentForSelfExtract=true
 
           dotnet publish "desktop/VexPN.Desktop/VexPN.Desktop.csproj" -c Release -r win-x86 `
-            /p:PublishDir="desktop/VexPN.Desktop/publish-x86/" `
+            /p:PublishDir="publish-x86/" `
             /p:AppendRuntimeIdentifierToPublishPath=false `
             /p:SelfContained=true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:IncludeAllContentForSelfExtract=true
 
