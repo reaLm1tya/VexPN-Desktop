@@ -7,6 +7,9 @@ DefaultDirName={autopf}\VexPN
 DefaultGroupName=VexPN
 UninstallDisplayName=VexPN
 UninstallDisplayIcon={app}\VexPN.exe
+SetupIconFile=..\Assets\app.ico
+UninstallDisplayIcon={app}\VexPN.exe
+UninstallFilesDir={app}
 OutputDir=dist
 OutputBaseFilename=VexPN-Setup-x64
 Compression=lzma2
@@ -15,6 +18,9 @@ ArchitecturesInstallIn64BitMode=x64
 ArchitecturesAllowed=x64
 PrivilegesRequired=admin
 WizardStyle=modern
+
+[Languages]
+Name: "ru"; MessagesFile: "compiler:Languages\\Russian.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Дополнительно:"; Flags: unchecked

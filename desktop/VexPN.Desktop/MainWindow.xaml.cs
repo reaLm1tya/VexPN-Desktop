@@ -301,13 +301,13 @@ public partial class MainWindow : Window
                 _connectionWatch.Reset();
                 _timer.Stop();
                 TimerText.Text = "00:00:00";
-                ShowNotification("VPN отключён.", true);
+                ShowNotification("VPN отключён", true);
             }
             else
             {
                 if (string.IsNullOrWhiteSpace(ActiveKey.VlessUri))
                 {
-                    ShowNotification("Для ключа не получена VLESS ссылка. Добавьте ключ заново.", false);
+                    ShowNotification("Для ключа не получена VLESS ссылка. Добавьте ключ заново", false);
                     return;
                 }
 
@@ -322,7 +322,7 @@ public partial class MainWindow : Window
 
                 _connectionWatch.Restart();
                 _timer.Start();
-                ShowNotification("VPN подключён.", true);
+                ShowNotification("VPN подключён", true);
             }
 
             UpdateConnectionVisual();
@@ -439,7 +439,7 @@ public partial class MainWindow : Window
         UpdateConnectionVisual();
         UpdateDeleteButtonState();
         SaveKeys();
-        ShowNotification("Ключи удалены.", true);
+        ShowNotification("Ключи удалены", true);
     }
 
     private void KeysList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -574,11 +574,23 @@ public partial class MainWindow : Window
         if (_trayIcon is not null)
             return;
 
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        System.Drawing.Icon? icon = null;
+        try
+        {
+            if (File.Exists(iconPath))
+                icon = new System.Drawing.Icon(iconPath);
+        }
+        catch
+        {
+            // ignore
+        }
+
         _trayIcon = new Forms.NotifyIcon
         {
             Text = "VexPN",
             Visible = true,
-            Icon = System.Drawing.SystemIcons.Application
+            Icon = icon ?? System.Drawing.SystemIcons.Application
         };
 
         var menu = new Forms.ContextMenuStrip();
@@ -685,7 +697,7 @@ public partial class MainWindow : Window
         var key = rawKey.Trim();
         if (!IsVexKey(key))
         {
-            ShowNotification("Неверный формат ключа.", false);
+            ShowNotification("Неверный формат ключа", false);
             return;
         }
 
@@ -703,7 +715,7 @@ public partial class MainWindow : Window
 
             if (!res.IsSuccessStatusCode)
             {
-                ShowNotification("Ключ не найден или неактивен.", false);
+                ShowNotification("Ключ не найден или неактивен", false);
                 return;
             }
 
@@ -711,13 +723,13 @@ public partial class MainWindow : Window
             var resolved = JsonSerializer.Deserialize<ResolveKeyResponse>(body);
             if (resolved is null || !resolved.Ok)
             {
-                ShowNotification("Ключ не прошел проверку.", false);
+                ShowNotification("Ключ не прошёл проверку", false);
                 return;
             }
 
             if (!resolved.Active)
             {
-                ShowNotification("У этого ключа нет активного VPN тарифа.", false);
+                ShowNotification("У этого ключа нет активного VPN тарифа", false);
                 return;
             }
 
@@ -730,12 +742,12 @@ public partial class MainWindow : Window
             var activeId = AppendOrUpdateKey(vm);
             SetActiveKey(activeId);
             HideModalPanels();
-            ShowNotification("Ключ успешно добавлен.", true);
+            ShowNotification("Ключ успешно добавлен", true);
             SaveKeys();
         }
         catch
         {
-            ShowNotification("Ошибка подключения к backend.", false);
+            ShowNotification("Ошибка подключения к backend", false);
         }
         finally
         {
