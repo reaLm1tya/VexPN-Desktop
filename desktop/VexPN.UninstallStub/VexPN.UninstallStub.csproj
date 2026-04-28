@@ -7,6 +7,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>uninstall</AssemblyName>
+    <ApplicationIcon>..\VexPN.Desktop\Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\VexPN.Desktop\Assets\app.ico" Link="app.ico" />
+  </ItemGroup>
 </Project>
 
