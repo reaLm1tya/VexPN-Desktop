@@ -65,8 +65,12 @@ jobs:
 
           $extract = Join-Path $env:TEMP ("wintun-extract-" + [Guid]::NewGuid().ToString("n"))
           Expand-Archive -Path $zip -DestinationPath $extract -Force
-          Copy-Item -Force (Join-Path $extract "amd64/wintun.dll") "desktop/VexPN.Desktop/Assets/wintun/amd64/wintun.dll"
-          Copy-Item -Force (Join-Path $extract "x86/wintun.dll") "desktop/VexPN.Desktop/Assets/wintun/x86/wintun.dll"
+          $amd64 = Get-ChildItem -Path $extract -Recurse -Filter "wintun.dll" | Where-Object { $_.FullName -match "(?i)\\bam(d)?64\\b" } | Select-Object -First 1
+          $x86   = Get-ChildItem -Path $extract -Recurse -Filter "wintun.dll" | Where-Object { $_.FullName -match "(?i)\\bx86\\b" } | Select-Object -First 1
+          if (-not $amd64) { throw "amd64 wintun.dll not found in archive" }
+          if (-not $x86) { throw "x86 wintun.dll not found in archive" }
+          Copy-Item -Force $amd64.FullName "desktop/VexPN.Desktop/Assets/wintun/amd64/wintun.dll"
+          Copy-Item -Force $x86.FullName "desktop/VexPN.Desktop/Assets/wintun/x86/wintun.dll"
 
       - name: Publish VexPN (x64 + x86)
         shell: pwsh

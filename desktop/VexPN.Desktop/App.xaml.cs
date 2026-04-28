@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -7,10 +8,22 @@ namespace VexPN.Desktop;
 
 public partial class App : System.Windows.Application
 {
+    private static Mutex? _singleInstanceMutex;
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+
+        // Single instance: if already running, exit silently.
+        // (MVP: no window activation; prevents double-run bugs and file locks.)
+        var createdNew = false;
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, name: "Global\\VexPN.Desktop.SingleInstance", createdNew: out createdNew);
+        if (!createdNew)
+        {
+            Shutdown(-2);
+            return;
+        }
 
         // Иначе приложение может завершиться при закрытии splash (OnLastWindowClose по умолчанию).
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -26,6 +39,25 @@ public partial class App : System.Windows.Application
         MainWindow = mainWindow;
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         mainWindow.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+        }
+        catch
+        {
+            // ignore
+        }
+        finally
+        {
+            try { _singleInstanceMutex?.Dispose(); } catch { /* ignore */ }
+            _singleInstanceMutex = null;
+        }
+
+        base.OnExit(e);
     }
 
     private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
