@@ -8,7 +8,6 @@ DefaultGroupName=VexPN
 UninstallDisplayName=VexPN
 UninstallDisplayIcon={app}\VexPN.exe
 SetupIconFile=..\Assets\app.ico
-UninstallDisplayIcon={app}\VexPN.exe
 UninstallFilesDir={app}
 OutputDir=dist
 OutputBaseFilename=VexPN-Setup-x86
