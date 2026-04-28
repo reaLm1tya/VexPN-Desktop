@@ -112,11 +112,15 @@ jobs:
         run: |
           dotnet publish "desktop/VexPN.UninstallStub/VexPN.UninstallStub.csproj" -c Release -r win-x64 `
             /p:PublishSingleFile=true /p:SelfContained=true `
-            /p:PublishDir="desktop/VexPN.Desktop/installer/uninstall/x64/"
+            /p:PublishDir="../VexPN.Desktop/installer/uninstall/x64/"
 
           dotnet publish "desktop/VexPN.UninstallStub/VexPN.UninstallStub.csproj" -c Release -r win-x86 `
             /p:PublishSingleFile=true /p:SelfContained=true `
-            /p:PublishDir="desktop/VexPN.Desktop/installer/uninstall/x86/"
+            /p:PublishDir="../VexPN.Desktop/installer/uninstall/x86/"
+
+          Write-Host "=== uninstall outputs ==="
+          Get-ChildItem "desktop/VexPN.Desktop/installer/uninstall/x64" -Force | Format-Table Name,Length
+          Get-ChildItem "desktop/VexPN.Desktop/installer/uninstall/x86" -Force | Format-Table Name,Length
 
       - name: Install Inno Setup
         shell: pwsh
