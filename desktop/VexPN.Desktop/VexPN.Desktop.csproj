@@ -1,0 +1,115 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>VexPN.Desktop</RootNamespace>
+    <AssemblyName>VexPN</AssemblyName>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Поддерживаем x64 и x86 (инсталляторы под обе архитектуры). -->
+    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
+    <!-- Чтобы отключить автообновление exe: dotnet build /p:SkipPublishAfterBuild=true -->
+    <SkipPublishAfterBuild Condition="'$(SkipPublishAfterBuild)' == ''">false</SkipPublishAfterBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\IMG_8970.PNG">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="Assets\IMG_8971.PNG">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="Assets\Lightness_rotate_36f_cw.gif">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <None Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <!-- При отсутствии бинарников пытаемся скачать (нужен интернет). Не ломает сборку при сбое. -->
+  <Target Name="EnsureXrayAssets" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <_XrayExe>$(MSBuildProjectDirectory)\Assets\xray.exe</_XrayExe>
+      <_WintunDll>$(MSBuildProjectDirectory)\Assets\wintun.dll</_WintunDll>
+    </PropertyGroup>
+    <Exec Condition="!Exists('$(_XrayExe)') OR !Exists('$(_WintunDll)')"
+          ContinueOnError="true"
+          Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\Ensure-XrayAssets.ps1&quot;" />
+  </Target>
+
+  <!-- Content с Condition после скачивания — иначе MSBuild не увидит новые файлы на первом проходе. -->
+  <Target Name="IncludeVpnAssets" AfterTargets="EnsureXrayAssets" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <!-- Legacy single-file assets (optional). Publishing uses arch-specific copies below. -->
+      <Content Include="$(MSBuildProjectDirectory)\Assets\xray.exe" Condition="Exists('$(MSBuildProjectDirectory)\Assets\xray.exe')">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <Content Include="$(MSBuildProjectDirectory)\Assets\wintun.dll" Condition="Exists('$(MSBuildProjectDirectory)\Assets\wintun.dll')">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+  </Target>
+
+  <!-- Для запуска из bin\ (не publish) кладём правильные бинарники по RID. -->
+  <Target Name="CopyRuntimeAssetsToOutput" AfterTargets="Build">
+    <MakeDir Directories="$(TargetDir)Assets" />
+    <Copy Condition="'$(RuntimeIdentifier)' == 'win-x86' And Exists('$(ProjectDir)Assets\xray\x86\xray.exe')"
+          SourceFiles="$(ProjectDir)Assets\xray\x86\xray.exe"
+          DestinationFiles="$(TargetDir)Assets\xray.exe"
+          SkipUnchangedFiles="true" />
+    <Copy Condition="'$(RuntimeIdentifier)' != 'win-x86' And Exists('$(ProjectDir)Assets\xray\x64\xray.exe')"
+          SourceFiles="$(ProjectDir)Assets\xray\x64\xray.exe"
+          DestinationFiles="$(TargetDir)Assets\xray.exe"
+          SkipUnchangedFiles="true" />
+    <Copy Condition="'$(RuntimeIdentifier)' == 'win-x86' And Exists('$(ProjectDir)Assets\wintun\x86\wintun.dll')"
+          SourceFiles="$(ProjectDir)Assets\wintun\x86\wintun.dll"
+          DestinationFiles="$(TargetDir)Assets\wintun.dll"
+          SkipUnchangedFiles="true" />
+    <Copy Condition="'$(RuntimeIdentifier)' != 'win-x86' And Exists('$(ProjectDir)Assets\wintun\amd64\wintun.dll')"
+          SourceFiles="$(ProjectDir)Assets\wintun\amd64\wintun.dll"
+          DestinationFiles="$(TargetDir)Assets\wintun.dll"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- После каждой сборки обновляет .\publish\VexPN.exe (single-file, self-contained). -->
+  <Target Name="PublishExeAfterEachBuild"
+          AfterTargets="Build"
+          Condition="'$(SkipPublishAfterBuild)' != 'true'">
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;SelfContained=true;PublishSingleFile=true;IncludeNativeLibrariesForSelfExtract=true;IncludeAllContentForSelfExtract=true;PublishDir=$(MSBuildProjectDirectory)\publish\;AppendRuntimeIdentifierToPublishPath=false;SkipPublishAfterBuild=true" />
+  </Target>
+
+  <!-- При PublishSingleFile дополнительные Content не всегда оказываются рядом с exe — копируем явно. -->
+  <Target Name="CopyPublishAssets" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)Assets" />
+    <Copy SourceFiles="$(ProjectDir)Assets\IMG_8970.PNG" DestinationFiles="$(PublishDir)Assets\IMG_8970.PNG" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(ProjectDir)Assets\IMG_8971.PNG" DestinationFiles="$(PublishDir)Assets\IMG_8971.PNG" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(ProjectDir)Assets\Lightness_rotate_36f_cw.gif" DestinationFiles="$(PublishDir)Assets\Lightness_rotate_36f_cw.gif" SkipUnchangedFiles="true" />
+    <!-- Кладём правильные xray.exe / wintun.dll в publish рядом с приложением -->
+    <Copy Condition="'$(RuntimeIdentifier)' == 'win-x86' And Exists('$(ProjectDir)Assets\xray\x86\xray.exe')"
+          SourceFiles="$(ProjectDir)Assets\xray\x86\xray.exe"
+          DestinationFiles="$(PublishDir)Assets\xray.exe"
+          SkipUnchangedFiles="true" />
+    <Copy Condition="'$(RuntimeIdentifier)' != 'win-x86' And Exists('$(ProjectDir)Assets\xray\x64\xray.exe')"
+          SourceFiles="$(ProjectDir)Assets\xray\x64\xray.exe"
+          DestinationFiles="$(PublishDir)Assets\xray.exe"
+          SkipUnchangedFiles="true" />
+
+    <Copy Condition="'$(RuntimeIdentifier)' == 'win-x86' And Exists('$(ProjectDir)Assets\wintun\x86\wintun.dll')"
+          SourceFiles="$(ProjectDir)Assets\wintun\x86\wintun.dll"
+          DestinationFiles="$(PublishDir)Assets\wintun.dll"
+          SkipUnchangedFiles="true" />
+    <Copy Condition="'$(RuntimeIdentifier)' != 'win-x86' And Exists('$(ProjectDir)Assets\wintun\amd64\wintun.dll')"
+          SourceFiles="$(ProjectDir)Assets\wintun\amd64\wintun.dll"
+          DestinationFiles="$(PublishDir)Assets\wintun.dll"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

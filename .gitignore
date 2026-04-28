@@ -1,0 +1,36 @@
+# Keep repo focused on Desktop app artifacts/sources.
+
+# OS / IDE
+.vs/
+.idea/
+.vscode/
+
+# Other app parts not needed for desktop installer
+ios/
+root/
+dump_sqlite_info.py
+
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+*.cache
+*.pdb
+
+# Big/binary outputs (we publish to GitHub Releases, not git)
+*.exe
+*.msi
+*.zip
+
+# Publish outputs / local installer build products
+desktop/VexPN.Desktop/publish*/
+desktop/VexPN.Desktop/publish-*/
+desktop/VexPN.Desktop/installer/uninstall/*/
+
+# Xray/Wintun binaries (store via Releases or download step)
+desktop/VexPN.Desktop/Assets/xray/**
+desktop/VexPN.Desktop/Assets/wintun/**
+desktop/VexPN.Desktop/Assets/xray.exe
+desktop/VexPN.Desktop/Assets/wintun.dll
+

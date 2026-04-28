@@ -1,0 +1,436 @@
+<Window x:Class="VexPN.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="VexPN"
+        Width="920"
+        Height="580"
+        MinWidth="760"
+        MinHeight="480"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="True"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI">
+
+    <Border x:Name="MainChromeBorder"
+            Background="{StaticResource ShellMainBrush}"
+            BorderBrush="{StaticResource ShellMainBrush}"
+            BorderThickness="1"
+            CornerRadius="16"
+            ClipToBounds="True">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Кастомная шапка вместо системного меню -->
+        <Border Grid.Row="0"
+                Background="{StaticResource ShellMainBrush}"
+                BorderBrush="{StaticResource ShellDividerBrush}"
+                BorderThickness="0,0,0,1"
+                MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Image x:Name="TitleBarLogo"
+                           Width="22"
+                           Height="22"
+                           Margin="14,0,10,0"
+                           VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="Fant"
+                           SnapsToDevicePixels="True" />
+                    <TextBlock Text="VexPN"
+                               FontWeight="Bold"
+                               FontSize="14"
+                               Foreground="{StaticResource PrimaryTextBrush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <Button Style="{StaticResource ChromeCaptionButton}"
+                            ToolTip="Свернуть"
+                            Click="MinimizeButton_Click">
+                        <TextBlock FontSize="16"
+                                   Margin="0,-2,0,0"
+                                   Text="−" />
+                    </Button>
+                    <Button Style="{StaticResource ChromeCaptionCloseButton}"
+                            ToolTip="Закрыть"
+                            Click="CloseButton_Click"
+                            FontSize="12"
+                            Content="✕" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Основная разметка -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="300" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Основная панель -->
+            <Grid Grid.Column="0"
+                  Background="{StaticResource ShellMainBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="1"
+                      VerticalAlignment="Center">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="36" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0"
+                                HorizontalAlignment="Center">
+                        <TextBlock Text="Время подключения"
+                                   FontSize="14"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock x:Name="TimerText"
+                                   Text="00:00:00"
+                                   FontSize="42"
+                                   FontWeight="SemiBold"
+                                   FontFamily="Cascadia Mono, Consolas"
+                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,8,0,0" />
+                    </StackPanel>
+
+                    <Button x:Name="ConnectionButton"
+                            Grid.Row="2"
+                            Width="240"
+                            Height="240"
+                            Style="{StaticResource FlatImageButton}"
+                            HorizontalAlignment="Center"
+                            Click="ConnectionButton_OnClick">
+                        <Button.RenderTransform>
+                            <ScaleTransform x:Name="ConnectionButtonScale" ScaleX="1" ScaleY="1" />
+                        </Button.RenderTransform>
+                        <Button.RenderTransformOrigin>0.5,0.5</Button.RenderTransformOrigin>
+                        <Image x:Name="ConnectionImage"
+                               Stretch="Uniform"
+                               SnapsToDevicePixels="True"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </Button>
+
+                    <TextBlock x:Name="ConnectionStatusText"
+                               Grid.Row="4"
+                               Text="НЕ ПОДКЛЮЧЕНО"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource SecondaryTextBrush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,4,0,0" />
+                </Grid>
+            </Grid>
+
+            <!-- Сайдбар -->
+            <Border Grid.Column="1"
+                    Background="{StaticResource ShellSidebarBrush}"
+                    BorderBrush="{StaticResource ShellMainBrush}"
+                    BorderThickness="1,1,1,1"
+                    Padding="20,20,20,18">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Профили"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                   VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Right">
+                            <Button x:Name="DeleteSelectedButton"
+                                    Style="{StaticResource GhostLinkButton}"
+                                    Content="Удалить"
+                                    Foreground="#F87171"
+                                    Visibility="Collapsed"
+                                    Click="DeleteSelectedButton_OnClick" />
+                            <Button x:Name="EditButton"
+                                    Style="{StaticResource GhostLinkButton}"
+                                    Content="Изменить"
+                                    Margin="8,0,0,0"
+                                    Click="EditButton_OnClick" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <ScrollViewer x:Name="KeysScrollViewer"
+                                      VerticalScrollBarVisibility="Hidden"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      CanContentScroll="True"
+                                      ScrollChanged="KeysScrollViewer_OnScrollChanged"
+                                      PreviewMouseWheel="KeysScrollViewer_OnPreviewMouseWheel">
+                            <ListBox x:Name="KeysList"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     SelectionMode="Single"
+                                     ItemContainerStyle="{StaticResource SidebarListBoxItem}"
+                                     PreviewMouseLeftButtonUp="KeysList_OnPreviewMouseLeftButtonUp"
+                                     SelectionChanged="KeysList_SelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Grid Width="12"
+                                                  Height="12"
+                                                  Margin="0,4,12,0"
+                                                  VerticalAlignment="Top">
+                                                <Ellipse Width="10"
+                                                         Height="10"
+                                                         Fill="{StaticResource AccentPurpleBrush}"
+                                                         HorizontalAlignment="Center"
+                                                         VerticalAlignment="Center"
+                                                         Visibility="{Binding DotVisibility}" />
+                                                <Ellipse Width="10"
+                                                         Height="10"
+                                                         Fill="{StaticResource InactiveDotBrush}"
+                                                         HorizontalAlignment="Center"
+                                                         VerticalAlignment="Center"
+                                                         Visibility="{Binding InactiveDotVisibility}" />
+                                            </Grid>
+
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontSize="15"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock FontSize="13"
+                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                           Margin="0,6,0,0"
+                                                           Text="{Binding RemainingLabel}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </ScrollViewer>
+
+                        <Border x:Name="TopFadeOverlay"
+                                VerticalAlignment="Top"
+                                Height="24"
+                                IsHitTestVisible="False">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Offset="0" Color="#AA161821" />
+                                    <GradientStop Offset="1" Color="#00161821" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+
+                        <Border x:Name="BottomFadeOverlay"
+                                VerticalAlignment="Bottom"
+                                Height="30"
+                                IsHitTestVisible="False">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Offset="0" Color="#00161821" />
+                                    <GradientStop Offset="1" Color="#CC161821" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                    </Grid>
+
+                    <Button x:Name="AddKeyButton"
+                            Grid.Row="2"
+                            Style="{StaticResource PurplePillButton}"
+                            Content="Добавить ключ"
+                            Margin="0,16,0,0"
+                            HorizontalAlignment="Stretch"
+                            Click="AddKeyButton_OnClick" />
+                </Grid>
+            </Border>
+
+            <Border x:Name="ModalOverlay"
+                    Grid.ColumnSpan="2"
+                    Background="#80000000"
+                    Visibility="Collapsed">
+                <Grid>
+                    <Border x:Name="AddKeyPanel"
+                            Width="420"
+                            Background="{StaticResource ShellSidebarBrush}"
+                            BorderBrush="{StaticResource ShellMainBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14"
+                            Padding="18"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0"
+                                       Text="Добавить ключ"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PrimaryTextBrush}" />
+                            <Button x:Name="CloseAddKeyPanelButton"
+                                    Grid.Row="0"
+                                    Panel.ZIndex="10"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Top"
+                                    Margin="0,-6,-6,0"
+                                    Width="24"
+                                    Height="24"
+                                    Padding="0"
+                                    FocusVisualStyle="{x:Null}"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    Foreground="{StaticResource SecondaryTextBrush}"
+                                    FontSize="14"
+                                    Cursor="Hand"
+                                    Click="CancelAddKeyButton_OnClick">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="Transparent" BorderThickness="0">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <TextBlock Text="✕"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SecondaryTextBrush}" />
+                            </Button>
+                            <TextBlock Grid.Row="1"
+                                       Text="Введите ключ доступа VexPN"
+                                       Margin="0,8,0,12"
+                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                            <TextBox x:Name="ManualKeyTextBox"
+                                     Grid.Row="2"
+                                     Height="38"
+                                     FontSize="14"
+                                     Padding="10,6"
+                                     Background="#111522"
+                                     Foreground="White"
+                                     BorderBrush="{StaticResource AccentPurpleBrush}"
+                                     BorderThickness="1" />
+                            <StackPanel Grid.Row="3"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Margin="0,14,0,0">
+                                <Grid Width="120" Height="48">
+                                    <Button x:Name="ConfirmAddKeyButton"
+                                            Style="{StaticResource PurplePillButton}"
+                                            Content="Добавить"
+                                            Width="120"
+                                            Click="ConfirmAddKeyButton_OnClick" />
+                                    <Image x:Name="ConfirmAddKeySpinnerGif"
+                                           Width="24"
+                                           Height="24"
+                                           Visibility="Collapsed"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Stretch="Uniform"
+                                           IsHitTestVisible="False"
+                                           SnapsToDevicePixels="True"
+                                           RenderOptions.BitmapScalingMode="Fant" />
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border x:Name="CloseConfirmPanel"
+                            Width="420"
+                            Background="{StaticResource ShellSidebarBrush}"
+                            BorderBrush="{StaticResource ShellMainBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14"
+                            Padding="18"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="Закрыть приложение?"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PrimaryTextBrush}" />
+                            <TextBlock Text="Несохраненные действия будут прерваны."
+                                       Margin="0,8,0,12"
+                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Right">
+                                <Button Style="{StaticResource GhostLinkButton}"
+                                        Content="Отмена"
+                                        VerticalAlignment="Center"
+                                        Margin="0,0,12,0"
+                                        Click="CancelCloseButton_OnClick" />
+                                <Button Style="{StaticResource PurplePillButton}"
+                                        Content="Закрыть"
+                                        Width="120"
+                                        Click="ConfirmCloseButton_OnClick" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border x:Name="NotificationBanner"
+                    Grid.ColumnSpan="2"
+                    Background="#E61E2230"
+                    BorderBrush="{StaticResource ShellMainBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Margin="0,12,0,0"
+                    Padding="16,10"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False">
+                <TextBlock x:Name="NotificationText"
+                           Foreground="{StaticResource PrimaryTextBrush}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Text="Уведомление" />
+            </Border>
+        </Grid>
+    </Grid>
+    </Border>
+</Window>
