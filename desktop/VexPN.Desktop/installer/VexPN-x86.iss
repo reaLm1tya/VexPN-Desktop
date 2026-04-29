@@ -1,7 +1,7 @@
 [Setup]
 AppId={{F2A7F5BA-01E8-4B4B-9A2D-0E3A4A1B2C10}
 AppName=VexPN
-AppVersion=1.0.0
+AppVersion=1.0.1
 AppPublisher=VexPN
 DefaultDirName={autopf}\VexPN
 DefaultGroupName=VexPN
