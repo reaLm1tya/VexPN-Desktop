@@ -2,22 +2,9 @@ name: Build Windows installers
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "desktop/**"
-      - ".github/workflows/build-installers.yml"
-  # Без paths: иначе релиз по тегу может не запуститься, если в коммите не менялся desktop/
   push:
-    branches:
-      - main
     tags:
       - "v*"
-
-concurrency:
-  group: build-installers-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -104,44 +91,36 @@ jobs:
 
       - name: Publish VexPN (x64 + x86)
         shell: pwsh
-        env:
-          ROOT: ${{ github.workspace }}
         run: |
-          $pub64 = Join-Path $env:ROOT "desktop/VexPN.Desktop/publish-x64"
-          $pub86 = Join-Path $env:ROOT "desktop/VexPN.Desktop/publish-x86"
-          dotnet publish "$env:ROOT/desktop/VexPN.Desktop/VexPN.Desktop.csproj" -c Release -r win-x64 `
-            /p:PublishDir="$pub64/" `
+          dotnet publish "desktop/VexPN.Desktop/VexPN.Desktop.csproj" -c Release -r win-x64 `
+            /p:PublishDir="publish-x64/" `
             /p:AppendRuntimeIdentifierToPublishPath=false `
             /p:SelfContained=true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:IncludeAllContentForSelfExtract=true
 
-          dotnet publish "$env:ROOT/desktop/VexPN.Desktop/VexPN.Desktop.csproj" -c Release -r win-x86 `
-            /p:PublishDir="$pub86/" `
+          dotnet publish "desktop/VexPN.Desktop/VexPN.Desktop.csproj" -c Release -r win-x86 `
+            /p:PublishDir="publish-x86/" `
             /p:AppendRuntimeIdentifierToPublishPath=false `
             /p:SelfContained=true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:IncludeAllContentForSelfExtract=true
 
           Write-Host "=== publish-x64 ==="
-          Get-ChildItem $pub64 -Force | Format-Table Name,Length
+          Get-ChildItem "desktop/VexPN.Desktop/publish-x64" -Force | Format-Table Name,Length
           Write-Host "=== publish-x86 ==="
-          Get-ChildItem $pub86 -Force | Format-Table Name,Length
+          Get-ChildItem "desktop/VexPN.Desktop/publish-x86" -Force | Format-Table Name,Length
 
       - name: Publish uninstall.exe (x64 + x86)
         shell: pwsh
-        env:
-          ROOT: ${{ github.workspace }}
         run: |
-          $u64 = Join-Path $env:ROOT "desktop/VexPN.Desktop/installer/uninstall/x64"
-          $u86 = Join-Path $env:ROOT "desktop/VexPN.Desktop/installer/uninstall/x86"
-          dotnet publish "$env:ROOT/desktop/VexPN.UninstallStub/VexPN.UninstallStub.csproj" -c Release -r win-x64 `
+          dotnet publish "desktop/VexPN.UninstallStub/VexPN.UninstallStub.csproj" -c Release -r win-x64 `
             /p:PublishSingleFile=true /p:SelfContained=true `
-            /p:PublishDir="$u64/"
+            /p:PublishDir="../VexPN.Desktop/installer/uninstall/x64/"
 
-          dotnet publish "$env:ROOT/desktop/VexPN.UninstallStub/VexPN.UninstallStub.csproj" -c Release -r win-x86 `
+          dotnet publish "desktop/VexPN.UninstallStub/VexPN.UninstallStub.csproj" -c Release -r win-x86 `
             /p:PublishSingleFile=true /p:SelfContained=true `
-            /p:PublishDir="$u86/"
+            /p:PublishDir="../VexPN.Desktop/installer/uninstall/x86/"
 
           Write-Host "=== uninstall outputs ==="
-          Get-ChildItem $u64 -Force | Format-Table Name,Length
-          Get-ChildItem $u86 -Force | Format-Table Name,Length
+          Get-ChildItem "desktop/VexPN.Desktop/installer/uninstall/x64" -Force | Format-Table Name,Length
+          Get-ChildItem "desktop/VexPN.Desktop/installer/uninstall/x86" -Force | Format-Table Name,Length
 
       - name: Install Inno Setup
         shell: pwsh
@@ -171,3 +150,4 @@ jobs:
         with:
           files: |
             desktop/VexPN.Desktop/installer/dist/*.exe
+
