@@ -10,12 +10,6 @@ public static class XrayConfigBuilder
 {
     private const string TunName = "xray0";
 
-    /// <summary>
-    /// Локальный SOCKS5 (127.0.0.1) — тот же VLESS outbound, что и TUN.
-    /// В Telegram Desktop: Настройки → Дополнительно → Тип соединения → SOCKS5.
-    /// </summary>
-    public const int LocalSocks5Port = 10808;
-
     public static string BuildJson(VlessUriParser.ParsedVless v)
     {
         var root = new JsonObject
@@ -29,7 +23,7 @@ public static class XrayConfigBuilder
                     JsonValue.Create("8.8.8.8"),
                     JsonValue.Create("8.8.4.4"))
             },
-            ["inbounds"] = new JsonArray(BuildTunInbound(), BuildLocalSocksInbound()),
+            ["inbounds"] = new JsonArray(BuildTunInbound()),
             ["outbounds"] = new JsonArray(
                 BuildVlessOutbound(v),
                 new JsonObject
@@ -53,19 +47,6 @@ public static class XrayConfigBuilder
 
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
-
-    private static JsonObject BuildLocalSocksInbound() =>
-        new()
-        {
-            ["tag"] = "socks-local",
-            ["listen"] = "127.0.0.1",
-            ["port"] = LocalSocks5Port,
-            ["protocol"] = "socks",
-            ["settings"] = new JsonObject
-            {
-                ["udp"] = true
-            }
-        };
 
     private static JsonObject BuildTunInbound() =>
         new()

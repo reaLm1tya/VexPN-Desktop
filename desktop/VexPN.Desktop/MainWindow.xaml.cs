@@ -258,22 +258,6 @@ public partial class MainWindow : Window
             _markedForDelete.Clear();
         }
         UpdateDeleteButtonState();
-        UpdateTelegramProxyHint(connected);
-    }
-
-    private void UpdateTelegramProxyHint(bool connected)
-    {
-        if (!connected)
-        {
-            TelegramProxyHintText.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        TelegramProxyHintText.Text =
-            "Telegram Desktop: Настройки → Дополнительно → Тип соединения — SOCKS5, " +
-            $"сервер 127.0.0.1, порт {XrayConfigBuilder.LocalSocks5Port}. " +
-            "Тот же выходной IP, что и у VPN; при проблемах перезапустите Telegram после включения VPN.";
-        TelegramProxyHintText.Visibility = Visibility.Visible;
     }
 
     private void EnsureActiveKeyConsistency()

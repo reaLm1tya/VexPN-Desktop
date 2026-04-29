@@ -111,7 +111,6 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="36" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0"
@@ -155,18 +154,6 @@
                                Foreground="{StaticResource SecondaryTextBrush}"
                                HorizontalAlignment="Center"
                                Margin="0,4,0,0" />
-
-                    <TextBlock x:Name="TelegramProxyHintText"
-                               Grid.Row="5"
-                               Visibility="Collapsed"
-                               TextWrapping="Wrap"
-                               TextAlignment="Center"
-                               MaxWidth="440"
-                               FontSize="12"
-                               LineHeight="16"
-                               Foreground="{StaticResource SecondaryTextBrush}"
-                               HorizontalAlignment="Center"
-                               Margin="24,10,24,0" />
                 </Grid>
             </Grid>
 
