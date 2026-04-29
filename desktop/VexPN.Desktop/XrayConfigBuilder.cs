@@ -15,8 +15,10 @@ public static class XrayConfigBuilder
         var root = new JsonObject
         {
             ["log"] = new JsonObject { ["loglevel"] = "warning" },
+            // UseIPv4: избегаем AAAA/IPv6, который на TUN часто «ломает» отдельные клиенты (в т.ч. Telegram).
             ["dns"] = new JsonObject
             {
+                ["queryStrategy"] = "UseIPv4",
                 ["servers"] = new JsonArray(
                     JsonValue.Create("1.1.1.1"),
                     JsonValue.Create("1.0.0.1"),
@@ -32,9 +34,10 @@ public static class XrayConfigBuilder
                     ["protocol"] = "freedom",
                     ["settings"] = new JsonObject()
                 }),
+            // IPIfNonMatch: лучше согласуется с sniffing (TLS/HTTP) и обходом «зависаний» на DNS/доменах.
             ["routing"] = new JsonObject
             {
-                ["domainStrategy"] = "AsIs",
+                ["domainStrategy"] = "IPIfNonMatch",
                 ["rules"] = new JsonArray(
                     new JsonObject
                     {
@@ -57,8 +60,8 @@ public static class XrayConfigBuilder
             ["settings"] = new JsonObject
             {
                 ["name"] = TunName,
-                // На Windows часто лучше работает меньший MTU (меньше фрагментации/подвисаний).
-                ["MTU"] = 1400
+                // Ниже MTU — меньше обрывов у отдельных UDP/крупных сессий (в т.ч. мессенджеров).
+                ["MTU"] = 1360
             },
             ["sniffing"] = new JsonObject
             {

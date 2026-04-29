@@ -9,6 +9,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>VexPN.Desktop</RootNamespace>
     <AssemblyName>VexPN</AssemblyName>
+    <Version>1.0.2</Version>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Поддерживаем x64 и x86 (инсталляторы под обе архитектуры). -->

@@ -1,7 +1,7 @@
 [Setup]
 AppId={{F2A7F5BA-01E8-4B4B-9A2D-0E3A4A1B2C10}
 AppName=VexPN
-AppVersion=1.0.0
+AppVersion=1.0.2
 AppPublisher=VexPN
 DefaultDirName={autopf}\VexPN
 DefaultGroupName=VexPN
@@ -38,6 +38,17 @@ Name: "{group}\VexPN"; Filename: "{app}\VexPN.exe"
 Name: "{group}\Удалить VexPN"; Filename: "{app}\uninstall.exe"
 Name: "{commondesktop}\VexPN"; Filename: "{app}\VexPN.exe"; Tasks: desktopicon
 
-[Run]
-Filename: "{app}\VexPN.exe"; Description: "Запустить VexPN"; Flags: nowait postinstall skipifsilent
+; VexPN требует UAC (app.manifest). Обычный [Run] после установки даёт CreateProcess 740 (нет повышения).
+; Запуск через ShellExec runas — отдельный запрос UAC, приложение стартует с правами администратора.
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ErrorCode: Integer;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    if not WizardSilent() then
+      ShellExec('runas', ExpandConstant('{app}\VexPN.exe'), '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+  end;
+end;
 
