@@ -16,7 +16,6 @@ SolidCompression=yes
 ArchitecturesAllowed=x86
 PrivilegesRequired=admin
 WizardStyle=modern
-AlwaysOnTop=yes
 
 [Languages]
 Name: "ru"; MessagesFile: "compiler:Languages\\Russian.isl"
@@ -40,6 +39,20 @@ Name: "{commondesktop}\VexPN"; Filename: "{app}\VexPN.exe"; Tasks: desktopicon
 
 ; См. VexPN-x64.iss: запуск с UAC (requireAdministrator), иначе код 740.
 [Code]
+const
+  HWND_TOPMOST = -1;
+  SWP_NOSIZE = $0001;
+  SWP_NOMOVE = $0002;
+  SWP_NOACTIVATE = $0010;
+
+function SetWindowPos(hWnd: HWND; hWndInsertAfter: HWND; X, Y, cx, cy: Integer; uFlags: UINT): BOOL;
+  external 'SetWindowPos@user32.dll stdcall';
+
+procedure InitializeWizard;
+begin
+  SetWindowPos(WizardForm.Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ErrorCode: Integer;
