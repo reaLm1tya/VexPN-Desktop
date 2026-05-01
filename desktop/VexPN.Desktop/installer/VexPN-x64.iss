@@ -17,6 +17,7 @@ ArchitecturesInstallIn64BitMode=x64
 ArchitecturesAllowed=x64
 PrivilegesRequired=admin
 WizardStyle=modern
+AlwaysOnTop=yes
 
 [Languages]
 Name: "ru"; MessagesFile: "compiler:Languages\\Russian.isl"

@@ -16,6 +16,7 @@ SolidCompression=yes
 ArchitecturesAllowed=x86
 PrivilegesRequired=admin
 WizardStyle=modern
+AlwaysOnTop=yes
 
 [Languages]
 Name: "ru"; MessagesFile: "compiler:Languages\\Russian.isl"

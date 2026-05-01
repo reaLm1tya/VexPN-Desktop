@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _editMode;
     private bool _isResolvingKey;
+    private bool _suppressTrayMinimize;
     private readonly List<BitmapSource> _addKeySpinnerFrames = [];
     private int _addKeySpinnerFrameIndex;
 
@@ -69,6 +71,8 @@ public partial class MainWindow : Window
         {
             if (WindowState == WindowState.Maximized)
                 WindowState = WindowState.Normal;
+            if (WindowState == WindowState.Minimized && !_suppressTrayMinimize)
+                MinimizeToTray();
         };
 
         Loaded += (_, _) =>
@@ -158,7 +162,7 @@ public partial class MainWindow : Window
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) =>
-        WindowState = WindowState.Minimized;
+        MinimizeToTray();
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) =>
         ShowCloseConfirmPanel();
@@ -614,6 +618,8 @@ public partial class MainWindow : Window
     private void MinimizeToTray()
     {
         EnsureTrayIcon();
+        if (WindowState != WindowState.Minimized)
+            WindowState = WindowState.Minimized;
         Hide();
         ShowInTaskbar = false;
         try
@@ -628,14 +634,15 @@ public partial class MainWindow : Window
 
     internal void ShowFromTray()
     {
+        _suppressTrayMinimize = true;
         ShowInTaskbar = true;
         Show();
-        if (WindowState == WindowState.Minimized)
+        if (WindowState != WindowState.Normal)
             WindowState = WindowState.Normal;
         Activate();
         Topmost = true;
-        Topmost = false;
         Focus();
+        Dispatcher.BeginInvoke(new Action(() => _suppressTrayMinimize = false), DispatcherPriority.Background);
     }
 
     private void AddKeyButton_OnClick(object sender, RoutedEventArgs e)
@@ -694,7 +701,7 @@ public partial class MainWindow : Window
         if (_isResolvingKey)
             return;
 
-        var key = rawKey.Trim();
+        var key = NormalizeVexKeyInput(rawKey);
         if (!IsVexKey(key))
         {
             ShowNotification("Неверный формат ключа", false);
@@ -756,8 +763,25 @@ public partial class MainWindow : Window
         }
     }
 
+    private static string NormalizeVexKeyInput(string rawKey)
+    {
+        if (string.IsNullOrWhiteSpace(rawKey))
+            return string.Empty;
+
+        var match = Regex.Match(rawKey.ToUpperInvariant(), @"VEX[A-Z0-9]{9,32}");
+        if (match.Success)
+            return match.Value;
+
+        // Позволяет вставлять ключ из бота с пробелами/дефисами/мусором.
+        var compact = new string(rawKey
+            .ToUpperInvariant()
+            .Where(char.IsLetterOrDigit)
+            .ToArray());
+        return compact;
+    }
+
     private static bool IsVexKey(string key) =>
-        key.StartsWith("VEX", StringComparison.OrdinalIgnoreCase) && key.Length == 12;
+        Regex.IsMatch(key, @"^VEX[A-Z0-9]{9,32}$", RegexOptions.CultureInvariant);
 
     private Guid AppendOrUpdateKey(ProfileKeyVm incoming)
     {
