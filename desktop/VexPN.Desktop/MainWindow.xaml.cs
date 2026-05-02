@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -19,6 +20,8 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
+using Drawing2D = System.Drawing.Drawing2D;
+using DrawingColor = System.Drawing.Color;
 using MediaColor = System.Windows.Media.Color;
 
 namespace VexPN.Desktop;
@@ -42,7 +45,8 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _editMode;
     private bool _isResolvingKey;
-    private bool _suppressTrayMinimize;
+    private Forms.ContextMenuStrip? _trayMenu;
+    private Forms.ToolStripMenuItem? _trayToggleVpnItem;
     private readonly List<BitmapSource> _addKeySpinnerFrames = [];
     private int _addKeySpinnerFrameIndex;
 
@@ -71,8 +75,6 @@ public partial class MainWindow : Window
         {
             if (WindowState == WindowState.Maximized)
                 WindowState = WindowState.Normal;
-            if (WindowState == WindowState.Minimized && !_suppressTrayMinimize)
-                MinimizeToTray();
         };
 
         Loaded += (_, _) =>
@@ -162,7 +164,7 @@ public partial class MainWindow : Window
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) =>
-        MinimizeToTray();
+        WindowState = WindowState.Minimized;
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) =>
         ShowCloseConfirmPanel();
@@ -262,6 +264,7 @@ public partial class MainWindow : Window
             _markedForDelete.Clear();
         }
         UpdateDeleteButtonState();
+        UpdateTrayContextMenu();
     }
 
     private void EnsureActiveKeyConsistency()
@@ -280,6 +283,12 @@ public partial class MainWindow : Window
 
     private async void ConnectionButton_OnClick(object sender, RoutedEventArgs e)
     {
+        PlayConnectionButtonPressAnimation();
+        await PerformVpnToggleAsync();
+    }
+
+    private async Task PerformVpnToggleAsync()
+    {
         if (_vpnBusy)
         {
             ShowNotification("Подождите...", false);
@@ -291,8 +300,6 @@ public partial class MainWindow : Window
             ShowNotification("Не выбран активный ключ.", false);
             return;
         }
-
-        PlayConnectionButtonPressAnimation();
 
         _vpnBusy = true;
         try
@@ -578,41 +585,234 @@ public partial class MainWindow : Window
         if (_trayIcon is not null)
             return;
 
+        var trayIcon = LoadTrayIconForNotifyArea();
+
+        _trayMenu = new Forms.ContextMenuStrip
+        {
+            ShowImageMargin = true,
+            Font = new System.Drawing.Font("Segoe UI", 9.25f, System.Drawing.FontStyle.Regular,
+                System.Drawing.GraphicsUnit.Point),
+            AutoSize = true,
+            DropShadowEnabled = true,
+            Renderer = new Forms.ToolStripProfessionalRenderer(new VexPnTrayColorTable())
+        };
+
+        _trayToggleVpnItem = CreateTrayMenuItem(
+            "Подключить",
+            CreateTrayMenuGlyph(TrayMenuGlyphKind.ToggleOff),
+            (_, _) => Dispatcher.InvokeAsync(PerformVpnToggleAsync));
+        var showItem = CreateTrayMenuItem(
+            "Показать",
+            CreateTrayMenuGlyph(TrayMenuGlyphKind.Show),
+            (_, _) => Dispatcher.Invoke(ShowFromTray));
+        var exitItem = CreateTrayMenuItem(
+            "Выход",
+            CreateTrayMenuGlyph(TrayMenuGlyphKind.Exit),
+            (_, _) =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    _allowClose = true;
+                    Close();
+                });
+            });
+
+        _trayMenu.Items.Add(_trayToggleVpnItem);
+        _trayMenu.Items.Add(showItem);
+        _trayMenu.Items.Add(new Forms.ToolStripSeparator());
+        _trayMenu.Items.Add(exitItem);
+        _trayMenu.Opening += (_, _) => UpdateTrayContextMenu();
+
+        _trayIcon = new Forms.NotifyIcon
+        {
+            Text = "VexPN",
+            Visible = true,
+            Icon = trayIcon,
+            ContextMenuStrip = _trayMenu
+        };
+
+        _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
+
+        UpdateTrayContextMenu();
+    }
+
+    private static Forms.ToolStripMenuItem CreateTrayMenuItem(
+        string text,
+        System.Drawing.Image? image,
+        EventHandler onClick)
+    {
+        var item = new Forms.ToolStripMenuItem(text, image, onClick)
+        {
+            ForeColor = DrawingColor.FromArgb(235, 238, 245),
+            BackColor = DrawingColor.FromArgb(28, 30, 38)
+        };
+        return item;
+    }
+
+    private void UpdateTrayContextMenu()
+    {
+        if (_trayIcon is null)
+            return;
+
+        var connected = _vpn.IsRunning;
+        var hasKey = ActiveKey is not null;
+        _trayIcon.Text = connected ? "VexPN — подключено" : "VexPN — не подключено";
+
+        if (_trayToggleVpnItem is null)
+            return;
+
+        _trayToggleVpnItem.Text = connected ? "Отключить" : "Подключить";
+        var oldImg = _trayToggleVpnItem.Image;
+        _trayToggleVpnItem.Image = CreateTrayMenuGlyph(connected ? TrayMenuGlyphKind.ToggleOn : TrayMenuGlyphKind.ToggleOff);
+        oldImg?.Dispose();
+        _trayToggleVpnItem.Enabled = hasKey && !_vpnBusy;
+        _trayToggleVpnItem.ForeColor = _trayToggleVpnItem.Enabled
+            ? DrawingColor.FromArgb(235, 238, 245)
+            : DrawingColor.FromArgb(120, 125, 140);
+    }
+
+    private System.Drawing.Icon LoadTrayIconForNotifyArea()
+    {
+        var fromLogo = TryIconFromPngLogo();
+        if (fromLogo is not null)
+            return fromLogo;
+
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
-        System.Drawing.Icon? icon = null;
         try
         {
             if (File.Exists(iconPath))
-                icon = new System.Drawing.Icon(iconPath);
+                return new System.Drawing.Icon(iconPath);
         }
         catch
         {
             // ignore
         }
 
-        _trayIcon = new Forms.NotifyIcon
-        {
-            Text = "VexPN",
-            Visible = true,
-            Icon = icon ?? System.Drawing.SystemIcons.Application
-        };
+        return System.Drawing.SystemIcons.Application;
+    }
 
-        var menu = new Forms.ContextMenuStrip();
-        var showItem = new Forms.ToolStripMenuItem("Показать", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
-        var exitItem = new Forms.ToolStripMenuItem("Выход", null, (_, _) =>
+    private static System.Drawing.Icon? TryIconFromPngLogo()
+    {
+        var pngPath = Path.Combine(AppContext.BaseDirectory, "Assets", "IMG_8971.PNG");
+        if (!File.Exists(pngPath))
+            return null;
+
+        try
         {
-            Dispatcher.Invoke(() =>
+            using var src = new System.Drawing.Bitmap(pngPath);
+            using var square = new System.Drawing.Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = System.Drawing.Graphics.FromImage(square))
             {
-                _allowClose = true;
-                Close();
-            });
-        });
-        menu.Items.Add(showItem);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(exitItem);
-        _trayIcon.ContextMenuStrip = menu;
+                g.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.SmoothingMode = Drawing2D.SmoothingMode.HighQuality;
+                g.PixelOffsetMode = Drawing2D.PixelOffsetMode.HighQuality;
+                g.CompositingQuality = Drawing2D.CompositingQuality.HighQuality;
+                g.DrawImage(src, 0, 0, 16, 16);
+            }
 
-        _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
+            var hIcon = square.GetHicon();
+            try
+            {
+                using var tmp = System.Drawing.Icon.FromHandle(hIcon);
+                return (System.Drawing.Icon)tmp.Clone();
+            }
+            finally
+            {
+                DestroyIcon(hIcon);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool DestroyIcon(IntPtr hIcon);
+
+    private enum TrayMenuGlyphKind
+    {
+        Show,
+        Exit,
+        ToggleOff,
+        ToggleOn
+    }
+
+    private static System.Drawing.Bitmap CreateTrayMenuGlyph(TrayMenuGlyphKind kind)
+    {
+        var bmp = new System.Drawing.Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using var g = System.Drawing.Graphics.FromImage(bmp);
+        g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias;
+        g.Clear(DrawingColor.Transparent);
+
+        switch (kind)
+        {
+            case TrayMenuGlyphKind.Show:
+            {
+                using (var br = new System.Drawing.SolidBrush(DrawingColor.FromArgb(180, 200, 230)))
+                {
+                    g.FillRectangle(br, 2f, 3f, 11f, 9f);
+                }
+
+                using (var pen = new System.Drawing.Pen(DrawingColor.FromArgb(130, 170, 240), 1.2f))
+                    g.DrawRectangle(pen, 2.5f, 3.5f, 10f, 8f);
+                break;
+            }
+            case TrayMenuGlyphKind.Exit:
+            {
+                using (var door = new System.Drawing.SolidBrush(DrawingColor.FromArgb(230, 120, 120)))
+                {
+                    g.FillRectangle(door, 3f, 3f, 7f, 11f);
+                }
+
+                using (var arr = new System.Drawing.Pen(DrawingColor.FromArgb(245, 200, 120), 1.4f)
+                       {
+                           EndCap = Drawing2D.LineCap.Round
+                       })
+                    g.DrawLine(arr, 11f, 8f, 13.5f, 8f);
+                break;
+            }
+            case TrayMenuGlyphKind.ToggleOff:
+                using (var on = new System.Drawing.SolidBrush(DrawingColor.FromArgb(52, 211, 153)))
+                {
+                    var path = new Drawing2D.GraphicsPath();
+                    path.AddPolygon(new[]
+                    {
+                        new System.Drawing.PointF(4f, 3f),
+                        new System.Drawing.PointF(13f, 8f),
+                        new System.Drawing.PointF(4f, 13f)
+                    });
+                    g.FillPath(on, path);
+                }
+
+                break;
+            case TrayMenuGlyphKind.ToggleOn:
+                using (var off = new System.Drawing.SolidBrush(DrawingColor.FromArgb(248, 113, 113)))
+                {
+                    g.FillRectangle(off, 4f, 4f, 8f, 8f);
+                }
+
+                break;
+        }
+
+        return bmp;
+    }
+
+    private sealed class VexPnTrayColorTable : Forms.ProfessionalColorTable
+    {
+        public override System.Drawing.Color MenuBorder => DrawingColor.FromArgb(55, 58, 72);
+        public override System.Drawing.Color MenuItemBorder => DrawingColor.FromArgb(70, 74, 90);
+        public override System.Drawing.Color MenuItemSelected => DrawingColor.FromArgb(93, 63, 211);
+        public override System.Drawing.Color MenuItemPressedGradientBegin => DrawingColor.FromArgb(110, 80, 230);
+        public override System.Drawing.Color MenuItemPressedGradientEnd => DrawingColor.FromArgb(85, 60, 200);
+        public override System.Drawing.Color MenuItemSelectedGradientBegin => DrawingColor.FromArgb(93, 63, 211);
+        public override System.Drawing.Color MenuItemSelectedGradientEnd => DrawingColor.FromArgb(75, 52, 185);
+        public override System.Drawing.Color ToolStripDropDownBackground => DrawingColor.FromArgb(28, 30, 38);
+        public override System.Drawing.Color ImageMarginGradientBegin => DrawingColor.FromArgb(22, 24, 30);
+        public override System.Drawing.Color ImageMarginGradientMiddle => DrawingColor.FromArgb(22, 24, 30);
+        public override System.Drawing.Color ImageMarginGradientEnd => DrawingColor.FromArgb(22, 24, 30);
+        public override System.Drawing.Color SeparatorDark => DrawingColor.FromArgb(55, 58, 68);
+        public override System.Drawing.Color SeparatorLight => DrawingColor.FromArgb(55, 58, 68);
     }
 
     private void MinimizeToTray()
@@ -634,7 +834,6 @@ public partial class MainWindow : Window
 
     internal void ShowFromTray()
     {
-        _suppressTrayMinimize = true;
         ShowInTaskbar = true;
         Show();
         if (WindowState != WindowState.Normal)
@@ -642,7 +841,6 @@ public partial class MainWindow : Window
         Activate();
         Topmost = true;
         Focus();
-        Dispatcher.BeginInvoke(new Action(() => _suppressTrayMinimize = false), DispatcherPriority.Background);
     }
 
     private void AddKeyButton_OnClick(object sender, RoutedEventArgs e)
