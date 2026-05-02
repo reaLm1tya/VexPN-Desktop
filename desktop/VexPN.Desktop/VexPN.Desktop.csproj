@@ -45,12 +45,25 @@
           Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\Ensure-XrayAssets.ps1&quot;" />
   </Target>
 
+  <Target Name="EnsureMihomoAssets" AfterTargets="EnsureXrayAssets" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <_MihomoExe>$(MSBuildProjectDirectory)\Assets\mihomo.exe</_MihomoExe>
+    </PropertyGroup>
+    <Exec Condition="!Exists('$(_MihomoExe)')"
+          ContinueOnError="true"
+          Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\Ensure-MihomoAssets.ps1&quot;" />
+  </Target>
+
   <!-- Content с Condition после скачивания — иначе MSBuild не увидит новые файлы на первом проходе. -->
-  <Target Name="IncludeVpnAssets" AfterTargets="EnsureXrayAssets" BeforeTargets="AssignTargetPaths">
+  <Target Name="IncludeVpnAssets" AfterTargets="EnsureMihomoAssets" BeforeTargets="AssignTargetPaths">
     <ItemGroup>
       <!-- Legacy single-file assets (optional). Publishing uses arch-specific copies below. -->
       <Content Include="$(MSBuildProjectDirectory)\Assets\xray.exe" Condition="Exists('$(MSBuildProjectDirectory)\Assets\xray.exe')">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <Content Include="$(MSBuildProjectDirectory)\Assets\mihomo.exe" Condition="Exists('$(MSBuildProjectDirectory)\Assets\mihomo.exe')">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       </Content>
       <Content Include="$(MSBuildProjectDirectory)\Assets\wintun.dll" Condition="Exists('$(MSBuildProjectDirectory)\Assets\wintun.dll')">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -76,6 +89,10 @@
     <Copy Condition="'$(RuntimeIdentifier)' != 'win-x86' And Exists('$(ProjectDir)Assets\wintun\amd64\wintun.dll')"
           SourceFiles="$(ProjectDir)Assets\wintun\amd64\wintun.dll"
           DestinationFiles="$(TargetDir)Assets\wintun.dll"
+          SkipUnchangedFiles="true" />
+    <Copy Condition="Exists('$(ProjectDir)Assets\mihomo.exe')"
+          SourceFiles="$(ProjectDir)Assets\mihomo.exe"
+          DestinationFiles="$(TargetDir)Assets\mihomo.exe"
           SkipUnchangedFiles="true" />
   </Target>
 
@@ -111,6 +128,10 @@
     <Copy Condition="'$(RuntimeIdentifier)' != 'win-x86' And Exists('$(ProjectDir)Assets\wintun\amd64\wintun.dll')"
           SourceFiles="$(ProjectDir)Assets\wintun\amd64\wintun.dll"
           DestinationFiles="$(PublishDir)Assets\wintun.dll"
+          SkipUnchangedFiles="true" />
+    <Copy Condition="Exists('$(ProjectDir)Assets\mihomo.exe')"
+          SourceFiles="$(ProjectDir)Assets\mihomo.exe"
+          DestinationFiles="$(PublishDir)Assets\mihomo.exe"
           SkipUnchangedFiles="true" />
   </Target>
 

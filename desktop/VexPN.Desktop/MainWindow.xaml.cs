@@ -33,7 +33,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _notificationTimer = new() { Interval = TimeSpan.FromSeconds(2.3) };
     private readonly DispatcherTimer _addKeySpinnerTimer = new() { Interval = TimeSpan.FromMilliseconds(42) };
     private readonly HttpClient _http = new();
-    private readonly XrayVpnService _vpn;
+    private readonly MihomoVpnService _vpn;
     private bool _vpnBusy;
     private Forms.NotifyIcon? _trayIcon;
     private BitmapImage? _connectedImage;
@@ -57,13 +57,30 @@ public partial class MainWindow : Window
 
     public ObservableCollection<ProfileKeyVm> Keys { get; } = [];
 
+    public ObservableCollection<SelectedVpnAppVm> VpnApps { get; } = [];
+
+    public ObservableCollection<InstalledAppEntry> PickAppEntries { get; } = [];
+
+    private List<InstalledAppEntry> _pickAppsAll = [];
+
+    private InstalledAppEntry? _pendingVpnPick;
+
+    private CancellationTokenSource? _pickScanCts;
+
     public MainWindow()
     {
         InitializeComponent();
-        _vpn = new XrayVpnService(_storageDir);
+        DataContext = this;
+        _vpn = new MihomoVpnService(_storageDir);
 
         KeysList.ItemsSource = Keys;
         Keys.CollectionChanged += Keys_OnCollectionChanged;
+        VpnApps.CollectionChanged += (_, _) =>
+        {
+            UpdateVpnAppsChrome();
+            UpdateConnectionVisual();
+            SaveKeys();
+        };
         _notificationTimer.Tick += (_, _) =>
         {
             _notificationTimer.Stop();
@@ -77,7 +94,7 @@ public partial class MainWindow : Window
                 WindowState = WindowState.Normal;
         };
 
-        Loaded += (_, _) =>
+        Loaded += async (_, _) =>
         {
             ApplyTitleBarBranding();
             LoadConnectionImages();
@@ -89,7 +106,17 @@ public partial class MainWindow : Window
             UpdateConnectionVisual();
             UpdateDeleteButtonState();
             UpdateKeysFadeOverlays();
+            UpdateVpnAppsChrome();
             EnsureTrayIcon();
+
+            try
+            {
+                await RefreshActiveKeyFromBackendAsync().ConfigureAwait(true);
+            }
+            catch
+            {
+                // ignore network/backend errors on startup
+            }
         };
         SizeChanged += (_, _) => ApplyRoundedClip();
 
@@ -246,8 +273,9 @@ public partial class MainWindow : Window
             TimerText.Text = "00:00:00";
 
         var hasKey = ActiveKey is not null;
-        ConnectionButton.IsEnabled = hasKey && !_vpnBusy;
-        ConnectionButton.Opacity = hasKey && !_vpnBusy ? 1 : 0.55;
+        var hasApps = VpnApps.Count > 0;
+        ConnectionButton.IsEnabled = hasKey && hasApps && !_vpnBusy;
+        ConnectionButton.Opacity = hasKey && hasApps && !_vpnBusy ? 1 : 0.55;
         EditButton.IsEnabled = !connected;
         AddKeyButton.IsEnabled = !connected;
         // Не используем IsEnabled=false, иначе WPF может "сбросить" внешний вид (фон становится белым).
@@ -301,6 +329,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (VpnApps.Count == 0)
+        {
+            ShowNotification("Выберите хотя бы одно приложение для VPN.", false);
+            return;
+        }
+
         _vpnBusy = true;
         try
         {
@@ -324,7 +358,8 @@ public partial class MainWindow : Window
 
                 ShowNotification("Подключение...", true);
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-                var err = await _vpn.ConnectAsync(ActiveKey.VlessUri!, cts.Token).ConfigureAwait(true);
+                var paths = VpnApps.Select(a => a.ExePath).ToList();
+                var err = await _vpn.ConnectAsync(ActiveKey.VlessUri!, paths, cts.Token).ConfigureAwait(true);
                 if (!string.IsNullOrEmpty(err))
                 {
                     ShowNotification(err, false);
@@ -665,7 +700,8 @@ public partial class MainWindow : Window
         var oldImg = _trayToggleVpnItem.Image;
         _trayToggleVpnItem.Image = CreateTrayMenuGlyph(connected ? TrayMenuGlyphKind.ToggleOn : TrayMenuGlyphKind.ToggleOff);
         oldImg?.Dispose();
-        _trayToggleVpnItem.Enabled = hasKey && !_vpnBusy;
+        var hasApps = VpnApps.Count > 0;
+        _trayToggleVpnItem.Enabled = hasKey && hasApps && !_vpnBusy;
         _trayToggleVpnItem.ForeColor = _trayToggleVpnItem.Enabled
             ? DrawingColor.FromArgb(235, 238, 245)
             : DrawingColor.FromArgb(120, 125, 140);
@@ -856,6 +892,8 @@ public partial class MainWindow : Window
     private void ShowAddKeyPanel()
     {
         CloseConfirmPanel.Visibility = Visibility.Collapsed;
+        PickVpnAppPanel.Visibility = Visibility.Collapsed;
+        ConfirmVpnAppPanel.Visibility = Visibility.Collapsed;
         AddKeyPanel.Visibility = Visibility.Visible;
         ModalOverlay.Visibility = Visibility.Visible;
         ManualKeyTextBox.Text = string.Empty;
@@ -867,6 +905,8 @@ public partial class MainWindow : Window
     {
         AddKeyPanel.Visibility = Visibility.Collapsed;
         CloseConfirmPanel.Visibility = Visibility.Collapsed;
+        PickVpnAppPanel.Visibility = Visibility.Collapsed;
+        ConfirmVpnAppPanel.Visibility = Visibility.Collapsed;
         ModalOverlay.Visibility = Visibility.Collapsed;
     }
 
@@ -881,6 +921,8 @@ public partial class MainWindow : Window
     private void ShowCloseConfirmPanel()
     {
         AddKeyPanel.Visibility = Visibility.Collapsed;
+        PickVpnAppPanel.Visibility = Visibility.Collapsed;
+        ConfirmVpnAppPanel.Visibility = Visibility.Collapsed;
         CloseConfirmPanel.Visibility = Visibility.Visible;
         ModalOverlay.Visibility = Visibility.Visible;
     }
@@ -1089,26 +1131,39 @@ public partial class MainWindow : Window
 
             var json = File.ReadAllText(KeysStoragePath);
             var state = JsonSerializer.Deserialize<StoredKeysState>(json);
-            if (state?.Keys is null)
+            if (state is null)
                 return;
 
             Keys.Clear();
-            foreach (var k in state.Keys)
+            if (state.Keys is not null)
             {
-                Keys.Add(new ProfileKeyVm(
-                    Guid.NewGuid(),
-                    k.AccessKey ?? string.Empty,
-                    k.Name ?? "Ключ",
-                    Math.Max(0, k.RemainingDays),
-                    k.VlessUri));
+                foreach (var k in state.Keys)
+                {
+                    Keys.Add(new ProfileKeyVm(
+                        Guid.NewGuid(),
+                        k.AccessKey ?? string.Empty,
+                        k.Name ?? "Ключ",
+                        Math.Max(0, k.RemainingDays),
+                        k.VlessUri));
+                }
+
+                if (!string.IsNullOrWhiteSpace(state.ActiveAccessKey))
+                {
+                    var active = Keys.FirstOrDefault(x =>
+                        x.AccessKey.Equals(state.ActiveAccessKey, StringComparison.OrdinalIgnoreCase));
+                    if (active is not null)
+                        SetActiveKey(active.Id);
+                }
             }
 
-            if (!string.IsNullOrWhiteSpace(state.ActiveAccessKey))
+            VpnApps.Clear();
+            if (state.VpnAppPaths is not null)
             {
-                var active = Keys.FirstOrDefault(x =>
-                    x.AccessKey.Equals(state.ActiveAccessKey, StringComparison.OrdinalIgnoreCase));
-                if (active is not null)
-                    SetActiveKey(active.Id);
+                foreach (var p in state.VpnAppPaths.Take(5))
+                {
+                    if (!string.IsNullOrWhiteSpace(p) && File.Exists(p.Trim()))
+                        VpnApps.Add(new SelectedVpnAppVm(p.Trim()));
+                }
             }
         }
         catch
@@ -1131,7 +1186,8 @@ public partial class MainWindow : Window
                     Name = k.Name,
                     RemainingDays = k.RemainingDays,
                     VlessUri = k.VlessUri
-                }).ToList()
+                }).ToList(),
+                VpnAppPaths = VpnApps.Select(a => a.ExePath).ToList()
             };
             File.WriteAllText(KeysStoragePath, JsonSerializer.Serialize(dto, new JsonSerializerOptions
             {
@@ -1143,19 +1199,191 @@ public partial class MainWindow : Window
             // ignore
         }
     }
+
+    private async Task RefreshActiveKeyFromBackendAsync()
+    {
+        var key = ActiveKey;
+        if (key is null || string.IsNullOrWhiteSpace(key.AccessKey))
+            return;
+
+        try
+        {
+            var url = $"{BackendBaseUrl}/api/vpn/key/resolve";
+            var payload = JsonSerializer.Serialize(new { key = key.AccessKey.Trim() });
+            using var req = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+            using var res = await _http.SendAsync(req).ConfigureAwait(true);
+            if (!res.IsSuccessStatusCode)
+                return;
+
+            var body = await res.Content.ReadAsStringAsync().ConfigureAwait(true);
+            var r = JsonSerializer.Deserialize<ResolveKeyResponse>(body);
+            if (r is null || !r.Ok || !r.Active)
+                return;
+
+            key.RemainingDays = Math.Max(0, r.RemainingDays);
+            if (!string.IsNullOrWhiteSpace(r.KeyName))
+                key.Name = r.KeyName;
+            SaveKeys();
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private void UpdateVpnAppsChrome()
+    {
+        PickFirstVpnAppButton.Visibility = VpnApps.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        VpnAppsChipsPanel.Visibility = VpnApps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        AddVpnAppPlusButton.Visibility = VpnApps.Count is > 0 and < 5 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OpenVpnAppPicker_Click(object sender, RoutedEventArgs e) =>
+        _ = OpenVpnAppPickerAsync();
+
+    private void AddVpnAppPlusButton_Click(object sender, RoutedEventArgs e) =>
+        _ = OpenVpnAppPickerAsync();
+
+    private async Task OpenVpnAppPickerAsync()
+    {
+        if (_vpn.IsRunning)
+        {
+            ShowNotification("Сначала отключите VPN, чтобы менять список приложений.", false);
+            return;
+        }
+
+        AddKeyPanel.Visibility = Visibility.Collapsed;
+        CloseConfirmPanel.Visibility = Visibility.Collapsed;
+        ConfirmVpnAppPanel.Visibility = Visibility.Collapsed;
+        PickVpnAppPanel.Visibility = Visibility.Visible;
+        ModalOverlay.Visibility = Visibility.Visible;
+        AppSearchTextBox.Text = string.Empty;
+        PickAppEntries.Clear();
+        _pickAppsAll.Clear();
+        AppsPickLoadingText.Visibility = Visibility.Visible;
+        AppsPickList.Visibility = Visibility.Collapsed;
+
+        _pickScanCts?.Cancel();
+        _pickScanCts = new CancellationTokenSource();
+        var ct = _pickScanCts.Token;
+        try
+        {
+            var list = await InstalledAppsScanner.ScanAsync(ct).ConfigureAwait(true);
+            ct.ThrowIfCancellationRequested();
+            _pickAppsAll = list;
+            ApplyPickAppFilter();
+            AppsPickLoadingText.Visibility = Visibility.Collapsed;
+            AppsPickList.Visibility = Visibility.Visible;
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
+        }
+        catch
+        {
+            AppsPickLoadingText.Text = "Не удалось загрузить список приложений.";
+        }
+    }
+
+    private void ApplyPickAppFilter()
+    {
+        var q = (AppSearchTextBox.Text ?? string.Empty).Trim();
+        PickAppEntries.Clear();
+        IEnumerable<InstalledAppEntry> src = _pickAppsAll;
+        if (!string.IsNullOrEmpty(q))
+        {
+            src = _pickAppsAll.Where(a =>
+                a.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                Path.GetFileName(a.ExePath).Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+
+        foreach (var a in src.Take(500))
+            PickAppEntries.Add(a);
+    }
+
+    private void AppSearchTextBox_OnTextChanged(object sender, TextChangedEventArgs e) =>
+        ApplyPickAppFilter();
+
+    private void CancelPickVpnAppButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        _pickScanCts?.Cancel();
+        HideModalPanels();
+    }
+
+    private void AppsPickList_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (AppsPickList.SelectedItem is not InstalledAppEntry entry)
+            return;
+        _pendingVpnPick = entry;
+        ConfirmVpnAppPanel.Visibility = Visibility.Visible;
+        AppsPickList.SelectedItem = null;
+    }
+
+    private void CancelConfirmVpnAppButton_OnClick(object sender, RoutedEventArgs e) =>
+        ConfirmVpnAppPanel.Visibility = Visibility.Collapsed;
+
+    private void ConfirmAddVpnAppButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_pendingVpnPick is null)
+            return;
+        TryAddVpnApp(_pendingVpnPick);
+        _pendingVpnPick = null;
+        ConfirmVpnAppPanel.Visibility = Visibility.Collapsed;
+        HideModalPanels();
+    }
+
+    private void TryAddVpnApp(InstalledAppEntry entry)
+    {
+        if (_vpn.IsRunning)
+            return;
+        if (VpnApps.Any(a => a.ExePath.Equals(entry.ExePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            ShowNotification("Это приложение уже в списке.", false);
+            return;
+        }
+
+        if (VpnApps.Count >= 5)
+        {
+            ShowNotification("Можно добавить не более 5 приложений.", false);
+            return;
+        }
+
+        VpnApps.Add(new SelectedVpnAppVm(entry.ExePath));
+        ShowNotification($"Добавлено: {entry.DisplayName}", true);
+    }
+
+    private void RemoveVpnAppChip_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vpn.IsRunning)
+        {
+            ShowNotification("Сначала отключите VPN.", false);
+            return;
+        }
+
+        if (sender is not System.Windows.Controls.Button b || b.Tag is not string path)
+            return;
+        var vm = VpnApps.FirstOrDefault(a => a.ExePath.Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (vm is not null)
+            VpnApps.Remove(vm);
+    }
 }
 
 public sealed class ProfileKeyVm : INotifyPropertyChanged
 {
     private bool _isActiveDot;
     private bool _isMarkedForDelete;
+    private string _name;
+    private int _remainingDays;
 
     public ProfileKeyVm(Guid id, string accessKey, string name, int remainingDays, string? vlessUri)
     {
         Id = id;
         AccessKey = accessKey;
-        Name = name;
-        RemainingDays = remainingDays;
+        _name = name;
+        _remainingDays = remainingDays;
         VlessUri = vlessUri;
     }
 
@@ -1163,9 +1391,30 @@ public sealed class ProfileKeyVm : INotifyPropertyChanged
 
     public string AccessKey { get; }
 
-    public string Name { get; }
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            if (_name == value)
+                return;
+            _name = value;
+            OnPropertyChanged(nameof(Name));
+        }
+    }
 
-    public int RemainingDays { get; }
+    public int RemainingDays
+    {
+        get => _remainingDays;
+        set
+        {
+            if (_remainingDays == value)
+                return;
+            _remainingDays = value;
+            OnPropertyChanged(nameof(RemainingDays));
+            OnPropertyChanged(nameof(RemainingLabel));
+        }
+    }
 
     public string? VlessUri { get; }
 
@@ -1215,6 +1464,8 @@ public sealed class StoredKeysState
 {
     public string? ActiveAccessKey { get; set; }
     public List<StoredKeyDto>? Keys { get; set; }
+
+    public List<string>? VpnAppPaths { get; set; }
 }
 
 public sealed class ResolveKeyResponse

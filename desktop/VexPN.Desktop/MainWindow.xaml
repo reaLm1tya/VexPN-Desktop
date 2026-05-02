@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:VexPN.Desktop"
         mc:Ignorable="d"
         Title="VexPN"
         Width="920"
@@ -108,13 +109,95 @@
                       VerticalAlignment="Center">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="28" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="36" />
+                        <RowDefinition Height="20" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="28" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
+                    <!-- Приложения для VPN (до 5); без выбора подключение недоступно -->
                     <StackPanel Grid.Row="0"
+                                HorizontalAlignment="Center"
+                                Margin="0,0,0,10">
+                        <Button x:Name="PickFirstVpnAppButton"
+                                Click="OpenVpnAppPicker_Click"
+                                Padding="0"
+                                BorderThickness="0"
+                                Background="Transparent"
+                                Cursor="Hand">
+                            <Border Padding="16,9"
+                                    CornerRadius="22"
+                                    Background="#665D3FD3">
+                                <TextBlock Text="Выбрать приложение"
+                                           FontSize="13"
+                                           Foreground="#F0EEFE" />
+                            </Border>
+                        </Button>
+
+                        <StackPanel x:Name="VpnAppsChipsPanel"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Center"
+                                    Visibility="Collapsed">
+                            <ItemsControl x:Name="VpnAppsItems"
+                                          ItemsSource="{Binding VpnApps}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type local:SelectedVpnAppVm}">
+                                        <Border Margin="4,4"
+                                                Padding="10,6"
+                                                CornerRadius="18"
+                                                Background="#665D3FD3">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           FontSize="12"
+                                                           Foreground="#F5F3FF"
+                                                           VerticalAlignment="Center"
+                                                           MaxWidth="160"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <Button Margin="8,0,0,0"
+                                                        Padding="4,0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Foreground="#F9A8D4"
+                                                        FontSize="12"
+                                                        Cursor="Hand"
+                                                        Content="✕"
+                                                        Tag="{Binding ExePath}"
+                                                        Click="RemoveVpnAppChip_Click" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button x:Name="AddVpnAppPlusButton"
+                                    Click="AddVpnAppPlusButton_Click"
+                                    Padding="0"
+                                    BorderThickness="0"
+                                    Background="Transparent"
+                                    Cursor="Hand"
+                                    Margin="4,4,0,4"
+                                    Visibility="Collapsed">
+                                <Border Width="36"
+                                        Height="36"
+                                        CornerRadius="18"
+                                        Background="#44348FD9"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="+"
+                                               FontSize="18"
+                                               Foreground="White"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1"
                                 HorizontalAlignment="Center">
                         <TextBlock Text="Время подключения"
                                    FontSize="14"
@@ -131,7 +214,7 @@
                     </StackPanel>
 
                     <Button x:Name="ConnectionButton"
-                            Grid.Row="2"
+                            Grid.Row="3"
                             Width="240"
                             Height="240"
                             Style="{StaticResource FlatImageButton}"
@@ -148,7 +231,7 @@
                     </Button>
 
                     <TextBlock x:Name="ConnectionStatusText"
-                               Grid.Row="4"
+                               Grid.Row="5"
                                Text="НЕ ПОДКЛЮЧЕНО"
                                FontSize="13"
                                FontWeight="SemiBold"
@@ -383,6 +466,113 @@
                                 </Grid>
                             </StackPanel>
                         </Grid>
+                    </Border>
+
+                    <Border x:Name="PickVpnAppPanel"
+                            Width="480"
+                            MaxHeight="480"
+                            Background="{StaticResource ShellSidebarBrush}"
+                            BorderBrush="{StaticResource ShellMainBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14"
+                            Padding="18"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Приложения на этом ПК"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PrimaryTextBrush}" />
+                            <TextBox x:Name="AppSearchTextBox"
+                                     Grid.Row="1"
+                                     Height="36"
+                                     Margin="0,10,0,10"
+                                     FontSize="14"
+                                     Padding="10,6"
+                                     Background="#111522"
+                                     Foreground="White"
+                                     BorderBrush="{StaticResource AccentPurpleBrush}"
+                                     BorderThickness="1"
+                                     TextChanged="AppSearchTextBox_OnTextChanged" />
+                            <Grid Grid.Row="2"
+                                  MinHeight="220">
+                                <TextBlock x:Name="AppsPickLoadingText"
+                                           Text="Загрузка списка приложений…"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center" />
+                                <ListBox x:Name="AppsPickList"
+                                         ItemsSource="{Binding PickAppEntries}"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         MaxHeight="320"
+                                         Visibility="Collapsed"
+                                         SelectionMode="Single"
+                                         SelectionChanged="AppsPickList_OnSelectionChanged"
+                                         ItemContainerStyle="{StaticResource SidebarListBoxItem}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource PrimaryTextBrush}" />
+                                                <TextBlock Text="{Binding ExePath}"
+                                                           FontSize="11"
+                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                            <Button Grid.Row="3"
+                                    Style="{StaticResource GhostLinkButton}"
+                                    Content="Закрыть"
+                                    HorizontalAlignment="Right"
+                                    Margin="0,12,0,0"
+                                    Click="CancelPickVpnAppButton_OnClick" />
+                        </Grid>
+                    </Border>
+
+                    <Border x:Name="ConfirmVpnAppPanel"
+                            Panel.ZIndex="2"
+                            Width="400"
+                            Background="{StaticResource ShellSidebarBrush}"
+                            BorderBrush="{StaticResource ShellMainBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14"
+                            Padding="18"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="Вы точно хотите добавить приложение?"
+                                       TextWrapping="Wrap"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PrimaryTextBrush}" />
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Margin="0,16,0,0">
+                                <Button Style="{StaticResource GhostLinkButton}"
+                                        Content="Отмена"
+                                        Margin="0,0,12,0"
+                                        Click="CancelConfirmVpnAppButton_OnClick" />
+                                <Button Style="{StaticResource PurplePillButton}"
+                                        Content="Да"
+                                        Width="100"
+                                        Click="ConfirmAddVpnAppButton_OnClick" />
+                            </StackPanel>
+                        </StackPanel>
                     </Border>
 
                     <Border x:Name="CloseConfirmPanel"

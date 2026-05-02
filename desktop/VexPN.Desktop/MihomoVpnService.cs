@@ -4,19 +4,17 @@ using System.IO;
 namespace VexPN.Desktop;
 
 /// <summary>
-/// Запускает Xray-core с TUN inbound, применяет системные маршруты Windows и корректно откатывает при ошибке.
+/// Mihomo (Clash Meta) с TUN и правилами PROCESS-NAME — VPN только для выбранных .exe (Windows).
 /// </summary>
-public sealed class XrayVpnService : IAsyncDisposable
+public sealed class MihomoVpnService : IAsyncDisposable
 {
-    private const string TunName = "xray0";
     private readonly string _storageDir;
     private readonly object _gate = new();
     private Process? _process;
-    private WindowsRouteHelper? _routes;
     private string? _configPath;
     private string? _logPath;
 
-    public XrayVpnService(string storageDir) =>
+    public MihomoVpnService(string storageDir) =>
         _storageDir = storageDir;
 
     public bool IsRunning
@@ -37,11 +35,15 @@ public sealed class XrayVpnService : IAsyncDisposable
         }
     }
 
-    public static string GetBundledXrayPath() =>
-        Path.Combine(AppContext.BaseDirectory, "Assets", "xray.exe");
+    public static string GetBundledMihomoPath() =>
+        Path.Combine(AppContext.BaseDirectory, "Assets", "mihomo.exe");
 
-    public async Task<string?> ConnectAsync(string vlessUri, CancellationToken ct)
+    /// <param name="vpnAppExePaths">Полные пути к .exe (до 5), должны быть непустые.</param>
+    public async Task<string?> ConnectAsync(string vlessUri, IReadOnlyList<string> vpnAppExePaths, CancellationToken ct)
     {
+        if (vpnAppExePaths.Count == 0)
+            return "Выберите хотя бы одно приложение для VPN.";
+
         if (!VlessUriParser.TryParse(vlessUri, out var parsed, out var parseErr))
             return parseErr;
 
@@ -52,16 +54,13 @@ public sealed class XrayVpnService : IAsyncDisposable
             string.IsNullOrWhiteSpace(parsed.PublicKey))
             return "В VLESS ссылке нет public key (pbk) для REALITY.";
 
-        var xrayExe = GetBundledXrayPath();
-        if (!File.Exists(xrayExe))
-            return $"Не найден xray.exe по пути: {xrayExe}";
+        var mihomoExe = GetBundledMihomoPath();
+        if (!File.Exists(mihomoExe))
+            return $"Не найден mihomo.exe. Ожидался путь: {mihomoExe}";
 
         var wintun = Path.Combine(AppContext.BaseDirectory, "Assets", "wintun.dll");
         if (!File.Exists(wintun))
-        {
-            // Xray на Windows требует wintun.dll рядом с xray.exe (см. README TUN).
             return $"Не найден wintun.dll по пути: {wintun}";
-        }
 
         lock (_gate)
         {
@@ -69,30 +68,40 @@ public sealed class XrayVpnService : IAsyncDisposable
                 return "VPN уже подключён.";
         }
 
+        var basenames = vpnAppExePaths
+            .Select(p => Path.GetFileName(p.Trim()))
+            .Where(f => !string.IsNullOrWhiteSpace(f) && f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (basenames.Count == 0)
+            return "Некорректные пути к приложениям (.exe).";
+
+        string yaml;
+        try
+        {
+            yaml = MihomoConfigBuilder.BuildYaml(parsed, basenames);
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+
         Directory.CreateDirectory(_storageDir);
-        var physical = await WindowsRouteHelper.GetPrimaryIpv4DefaultRouteAsync(ct).ConfigureAwait(false);
-        if (physical is null)
-            return "Не удалось определить основной шлюз IPv4. Проверьте подключение к сети.";
+        _configPath = Path.Combine(_storageDir, "mihomo-run.yaml");
+        await File.WriteAllTextAsync(_configPath, yaml, ct).ConfigureAwait(false);
 
-        var serverIp = await WindowsRouteHelper.ResolveServerIpv4Async(parsed.Address, ct).ConfigureAwait(false);
-        if (serverIp is null)
-            return "Не удалось определить IPv4 адрес сервера (DNS).";
-
-        var json = XrayConfigBuilder.BuildJson(parsed);
-        _configPath = Path.Combine(_storageDir, "xray-run.json");
-        await File.WriteAllTextAsync(_configPath, json, ct).ConfigureAwait(false);
-        _logPath = Path.Combine(_storageDir, "xray-run.log");
+        _logPath = Path.Combine(_storageDir, "mihomo-run.log");
         try { File.WriteAllText(_logPath, string.Empty); } catch { /* ignore */ }
 
-        var routeHelper = new WindowsRouteHelper();
         Process? proc = null;
         try
         {
             var psi = new ProcessStartInfo
             {
-                FileName = xrayExe,
-                Arguments = $"run -c \"{_configPath}\"",
-                WorkingDirectory = Path.GetDirectoryName(xrayExe)!,
+                FileName = mihomoExe,
+                Arguments = $"run -f \"{_configPath}\"",
+                WorkingDirectory = Path.GetDirectoryName(mihomoExe)!,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardError = true,
@@ -101,7 +110,7 @@ public sealed class XrayVpnService : IAsyncDisposable
 
             proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
             if (!proc.Start())
-                return "Не удалось запустить xray.exe.";
+                return "Не удалось запустить mihomo.exe.";
 
             void AppendLog(string? line)
             {
@@ -122,28 +131,19 @@ public sealed class XrayVpnService : IAsyncDisposable
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
 
-            // Дождаться TUN адаптера
-            var tunIf = await WindowsRouteHelper.WaitForTunInterfaceIndexAsync(TunName, TimeSpan.FromSeconds(60), ct)
-                .ConfigureAwait(false);
-            if (tunIf is null)
+            await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
+
+            if (proc.HasExited)
             {
                 TryKill(proc);
                 var hint = _logPath is not null ? $" Лог: {_logPath}" : string.Empty;
-                return "Не появился сетевой адаптер TUN (xray0). Проверьте wintun.dll и версию Xray." + hint;
-            }
-
-            if (!await routeHelper.ApplyVpnRoutesAsync(serverIp, tunIf.Value, physical, ct).ConfigureAwait(false))
-            {
-                TryKill(proc);
-                return "Не удалось добавить маршруты. Подключение отменено.";
+                return "Mihomo завершился сразу после запуска." + hint;
             }
 
             lock (_gate)
             {
                 _process = proc;
-                _routes = routeHelper;
-                proc = null; // ownership transferred
-                routeHelper = null!;
+                proc = null;
             }
 
             return null;
@@ -151,13 +151,11 @@ public sealed class XrayVpnService : IAsyncDisposable
         catch (OperationCanceledException)
         {
             TryKill(proc);
-            await routeHelper.RemoveAddedRoutesAsync(CancellationToken.None).ConfigureAwait(false);
             throw;
         }
         catch (Exception ex)
         {
             TryKill(proc);
-            await routeHelper.RemoveAddedRoutesAsync(CancellationToken.None).ConfigureAwait(false);
             return ex.Message;
         }
     }
@@ -165,17 +163,11 @@ public sealed class XrayVpnService : IAsyncDisposable
     public async Task DisconnectAsync(CancellationToken ct)
     {
         Process? proc;
-        WindowsRouteHelper? routes;
         lock (_gate)
         {
             proc = _process;
-            routes = _routes;
             _process = null;
-            _routes = null;
         }
-
-        if (routes is not null)
-            await routes.RemoveAddedRoutesAsync(ct).ConfigureAwait(false);
 
         if (proc is not null)
         {
@@ -222,8 +214,6 @@ public sealed class XrayVpnService : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
-    {
+    public async ValueTask DisposeAsync() =>
         await DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
-    }
 }
